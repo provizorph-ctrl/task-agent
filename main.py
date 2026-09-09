@@ -3,7 +3,9 @@ import json
 import asyncio
 import threading
 import logging
-from datetime import datetime, timedelta
+import time
+import requests
+from datetime import datetime, timedelta, timezone
 from flask import Flask, render_template, request, jsonify
 from database import init_db, add_task, get_task, get_all_tasks, update_task, delete_task, get_stats, get_pending_reminders, mark_reminder_sent
 from llm import plan_task, analyze_progress, summarize_day, chat_with_agent
@@ -61,21 +63,21 @@ def api_stats():
 
 CHAT_ID = int(os.environ.get("TELEGRAM_CHAT_ID", "0"))
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+BOT_API = f"https://api.telegram.org/bot{TOKEN}"
 
 telegram_app = None
 
-async def send_message(text):
-    if telegram_app:
-        await telegram_app.bot.send_message(chat_id=CHAT_ID, text=text)
-
-def send_message_sync(text):
-    if telegram_app:
-        try:
-            loop = telegram_app.bot_loop
-            if loop and loop.is_running():
-                asyncio.run_coroutine_threadsafe(send_message(text), loop)
-        except Exception as e:
-            logger.error(f"Send message error: {e}")
+def send_telegram(text):
+    try:
+        resp = requests.post(
+            f"{BOT_API}/sendMessage",
+            json={"chat_id": CHAT_ID, "text": text},
+            timeout=10
+        )
+        return resp.ok
+    except Exception as e:
+        logger.error(f"Send error: {e}")
+        return False
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.id != CHAT_ID:
@@ -96,36 +98,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Chat error: {e}")
         await update.message.reply_text("Произошла ошибка, попробуй ещё раз.")
 
-def daily_report_job():
-    tasks = get_all_tasks()
-    if not tasks:
-        return
-    try:
-        summary = summarize_day(tasks)
-        send_message_sync(f"Ежедневный отчёт:\n\n{summary}")
-    except Exception as e:
-        logger.error(f"Daily report error: {e}")
-
-def check_pending_tasks():
-    tasks = get_all_tasks(status="in_progress")
-    if not tasks:
-        return
-    msg = "Напоминание: у тебя задачи в процессе:\n\n"
-    for t in tasks:
-        msg += f"🔄 #{t['id']} — {t['title']}\n"
-    send_message_sync(msg)
-
 def check_reminders():
     while True:
         try:
             reminders = get_pending_reminders()
             for r in reminders:
-                send_message_sync(f"Напоминание: {r['text']}")
+                logger.info(f"Sending reminder: {r['text']}")
+                send_telegram(f"Напоминание: {r['text']}")
                 mark_reminder_sent(r['id'])
         except Exception as e:
             logger.error(f"Reminder check error: {e}")
-        import time
-        time.sleep(60)
+        time.sleep(30)
 
 def start_flask():
     port = int(os.environ.get("PORT", 5000))
