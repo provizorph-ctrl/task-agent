@@ -100,10 +100,13 @@ def add_reminder(text, remind_at):
         return cursor.lastrowid
 
 def get_pending_reminders():
+    from datetime import timedelta, timezone
+    local_tz = timezone(timedelta(hours=3))
+    local_now = datetime.now(local_tz).replace(tzinfo=None)
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT * FROM reminders WHERE sent = 0 AND remind_at <= ?",
-            (datetime.now().isoformat(),)
+            (local_now.isoformat(),)
         ).fetchall()
         return [dict(r) for r in rows]
 
