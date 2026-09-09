@@ -101,7 +101,7 @@ def add_reminder(text, remind_at):
 
 def get_pending_reminders():
     from datetime import timedelta, timezone
-    local_tz = timezone(timedelta(hours=6))
+    local_tz = timezone(timedelta(hours=5))
     local_now = datetime.now(local_tz).replace(tzinfo=None)
     with get_conn() as conn:
         rows = conn.execute(
