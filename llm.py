@@ -81,16 +81,22 @@ def summarize_day(tasks):
     return response.choices[0].message.content
 
 def chat_with_agent(user_text, tasks_json, stats):
-    from database import add_task, get_all_tasks, update_task, delete_task, add_reminder
+    from database import add_task, get_all_tasks, update_task, delete_task, add_reminder, get_all_reminders
     from datetime import datetime, timedelta, timezone
 
     local_tz = timezone(timedelta(hours=5))
     local_now = datetime.now(local_tz)
 
+    reminders = get_all_reminders()
+    reminders_json = json.dumps(reminders, ensure_ascii=False, default=str)
+
     system_prompt = f"""Ты — умный менеджер задач. Общаешься с человеком на русском языке.
 
 Текущие задачи:
 {tasks_json}
+
+Напоминания:
+{reminders_json}
 
 Статистика:
 {json.dumps(stats, ensure_ascii=False)}
@@ -99,17 +105,19 @@ def chat_with_agent(user_text, tasks_json, stats):
 1. Если человек хочет создать задачу — СОЗДАЙ её через add_task() и подтверди
 2. Если хочет отметить задачу выполненной — отметь через update_task(id, status='done')
 3. Если хочет удалить задачу — удали через delete_task(id)
-4. Если спрашивает про задачи — покажи список
-5. Если просит напоминание — СОЗДАЙ его через add_reminder() и подтверди
-6. Если просто общается — поддерживай разговор, будь дружелюбным
-7. Будь кратким, отвечай 1-3 предложения
+4. Если спрашивает про задачи — покажи список задач
+5. Если спрашивает про напоминания — покажи список напоминаний
+6. Если просит напоминание — СОЗДАЙ его через add_reminder() и подтверди
+7. Если просто общается — поддерживай разговор, будь дружелюбным
+8. Будь кратким, отвечай 1-3 предложения
 
 Доступные функции:
 - add_task(title, description, priority) — создать задачу
 - update_task(id, status='done') — отметить выполненной
-- delete_task(id) — удалить
-- get_all_tasks() — получить список
-- add_reminder(text, remind_at) — создать напоминание (remind_at в формате YYYY-MM-DD HH:MM:SS в UTC+3)
+- delete_task(id) — удалить задачу
+- get_all_tasks() — получить список задач
+- add_reminder(text, remind_at) — создать напоминание (remind_at в формате YYYY-MM-DD HH:MM:SS в UTC+5)
+- get_all_reminders() — получить список напоминаний
 
 Если нужно создать задачу, верни JSON:
 {{"action": "create", "title": "название", "description": "описание", "priority": 3}}
@@ -117,7 +125,7 @@ def chat_with_agent(user_text, tasks_json, stats):
 Если отметить выполненной:
 {{"action": "done", "id": 1}}
 
-Если удалить:
+Если удалить задачу:
 {{"action": "delete", "id": 1}}
 
 Если создать напоминание:
@@ -125,7 +133,7 @@ def chat_with_agent(user_text, tasks_json, stats):
 
 Если просто общаешься — верни обычный текст без JSON.
 
-Текущее время (Москва, UTC+3): {local_now.strftime('%Y-%m-%d %H:%M:%S')}"""
+Текущее время (UTC+5): {local_now.strftime('%Y-%m-%d %H:%M:%S')}"""
 
     response = client.chat.completions.create(
         model="qwen/qwen3.8-27b",
