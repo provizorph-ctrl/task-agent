@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Manager</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f0f; color: #e0e0e0; }
+        .container { max-width: 900px; margin: 0 auto; padding: 20px; }
+        h1 { text-align: center; margin-bottom: 30px; color: #4fc3f7; font-size: 1.8em; }
+        .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 30px; }
+        .stat { background: #1a1a2e; padding: 15px; border-radius: 10px; text-align: center; }
+        .stat-num { font-size: 2em; font-weight: bold; color: #4fc3f7; }
+        .stat-label { font-size: 0.85em; color: #888; margin-top: 5px; }
+        .form { background: #1a1a2e; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
+        .form input, .form textarea, .form select { width: 100%; padding: 10px; margin-bottom: 10px; background: #16213e; border: 1px solid #333; border-radius: 6px; color: #fff; font-size: 14px; }
+        .form button { width: 100%; padding: 12px; background: #4fc3f7; border: none; border-radius: 6px; color: #000; font-weight: bold; cursor: pointer; font-size: 14px; }
+        .form button:hover { background: #29b6f6; }
+        .tasks { display: flex; flex-direction: column; gap: 10px; }
+        .task { background: #1a1a2e; padding: 15px; border-radius: 10px; border-left: 4px solid #4fc3f7; }
+        .task.done { opacity: 0.5; border-left-color: #4caf50; }
+        .task.in_progress { border-left-color: #ff9800; }
+        .task-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .task-title { font-weight: bold; font-size: 1.05em; }
+        .task-id { color: #888; font-size: 0.85em; }
+        .task-desc { color: #aaa; font-size: 0.9em; margin-bottom: 8px; }
+        .subtasks { margin-top: 8px; }
+        .subtask { font-size: 0.85em; color: #bbb; padding: 3px 0; }
+        .subtask::before { content: "○ "; color: #4fc3f7; }
+        .actions { display: flex; gap: 8px; margin-top: 10px; }
+        .btn { padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em; }
+        .btn-start { background: #ff9800; color: #000; }
+        .btn-done { background: #4caf50; color: #000; }
+        .btn-delete { background: #f44336; color: #fff; }
+        .empty { text-align: center; color: #666; padding: 40px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Task Manager</h1>
+
+        <div class="stats">
+            <div class="stat"><div class="stat-num">{{ stats.total }}</div><div class="stat-label">Всего</div></div>
+            <div class="stat"><div class="stat-num" style="color:#ff9800">{{ stats.in_progress }}</div><div class="stat-label">В процессе</div></div>
+            <div class="stat"><div class="stat-num" style="color:#4caf50">{{ stats.done }}</div><div class="stat-label">Готово</div></div>
+            <div class="stat"><div class="stat-num" style="color:#888">{{ stats.pending }}</div><div class="stat-label">Ожидает</div></div>
+        </div>
+
+        <div class="form">
+            <input type="text" id="title" placeholder="Название задачи">
+            <textarea id="desc" rows="2" placeholder="Описание (необязательно)"></textarea>
+            <select id="priority">
+                <option value="1">Критический</option>
+                <option value="2">Высокий</option>
+                <option value="3" selected>Средний</option>
+                <option value="4">Низкий</option>
+                <option value="5">Можно подождать</option>
+            </select>
+            <button onclick="createTask()">Спланировать задачу</button>
+        </div>
+
+        <div class="tasks" id="tasks">
+            {% if tasks %}
+                {% for t in tasks %}
+                <div class="task {{ t.status }}" id="task-{{ t.id }}">
+                    <div class="task-header">
+                        <span class="task-title">{{ t.title }}</span>
+                        <span class="task-id">#{{ t.id }}</span>
+                    </div>
+                    {% if t.description %}<div class="task-desc">{{ t.description }}</div>{% endif %}
+                    <div class="subtasks">
+                        {% for st in t.subtasks|fromjson %}
+                            <div class="subtask">{{ st.title }}</div>
+                        {% endfor %}
+                    </div>
+                    <div class="actions">
+                        {% if t.status != 'in_progress' and t.status != 'done' %}
+                            <button class="btn btn-start" onclick="updateStatus({{ t.id }}, 'in_progress')">Начать</button>
+                        {% endif %}
+                        {% if t.status != 'done' %}
+                            <button class="btn btn-done" onclick="updateStatus({{ t.id }}, 'done')">Готово</button>
+                        {% endif %}
+                        <button class="btn btn-delete" onclick="deleteTask({{ t.id }})">Удалить</button>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="empty">Нет задач. Создай первую!</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        async function createTask() {
+            const title = document.getElementById('title').value.trim();
+            if (!title) return alert('Введите название');
+            const res = await fetch('/api/tasks', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    title,
+                    description: document.getElementById('desc').value,
+                    priority: document.getElementById('priority').value
+                })
+            });
+            if (res.ok) location.reload();
+        }
+
+        async function updateStatus(id, status) {
+            await fetch(`/api/tasks/${id}`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({status})
+            });
+            location.reload();
+        }
+
+        async function deleteTask(id) {
+            if (!confirm('Удалить задачу?')) return;
+            await fetch(`/api/tasks/${id}`, {method: 'DELETE'});
+            location.reload();
+        }
+    </script>
+</body>
+</html>
