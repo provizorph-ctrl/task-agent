@@ -79,3 +79,72 @@ def summarize_day(tasks):
         max_tokens=500
     )
     return response.choices[0].message.content
+
+def chat_with_agent(user_text, tasks_json, stats):
+    from database import add_task, get_all_tasks, update_task, delete_task
+
+    system_prompt = f"""Ты — умный менеджер задач. Общаешься с человеком на русском языке.
+
+Текущие задачи:
+{tasks_json}
+
+Статистика:
+{json.dumps(stats, ensure_ascii=False)}
+
+Правила:
+1. Если человек хочет создать задачу — СОЗДАЙ её через add_task() и подтверди
+2. Если хочет отметить задачу выполненной — отметь через update_task(id, status='done')
+3. Если хочет удалить задачу — удали через delete_task(id)
+4. Если спрашивает про задачи — покажи список
+5. Если просто общается — поддерживай разговор, будь дружелюбным
+6. Будь кратким, отвечай 1-3 предложения
+
+Доступные функции:
+- add_task(title, description, priority) — создать задачу
+- update_task(id, status='done') — отметить выполненной
+- delete_task(id) — удалить
+- get_all_tasks() — получить список
+
+Если нужно создать задачу, верни JSON:
+{{"action": "create", "title": "название", "description": "описание", "priority": 3}}
+
+Если отметить выполненной:
+{{"action": "done", "id": 1}}
+
+Если удалить:
+{{"action": "delete", "id": 1}}
+
+Если просто общаешься — верни обычный текст без JSON."""
+
+    response = client.chat.completions.create(
+        model="qwen/qwen3.8-27b",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_text}
+        ],
+        temperature=0.5,
+        max_tokens=500
+    )
+
+    content = response.choices[0].message.content.strip()
+
+    try:
+        if content.startswith("{"):
+            action = json.loads(content)
+            if action.get("action") == "create":
+                task_id = add_task(
+                    action.get("title", ""),
+                    action.get("description", ""),
+                    action.get("priority", 3)
+                )
+                return f"Задача #{task_id} создана: {action.get('title', '')}"
+            elif action.get("action") == "done":
+                update_task(action["id"], status="done")
+                return f"Задача #{action['id']} выполнена!"
+            elif action.get("action") == "delete":
+                delete_task(action["id"])
+                return f"Задача #{action['id']} удалена."
+    except (json.JSONDecodeError, KeyError):
+        pass
+
+    return content
