@@ -82,7 +82,10 @@ def summarize_day(tasks):
 
 def chat_with_agent(user_text, tasks_json, stats):
     from database import add_task, get_all_tasks, update_task, delete_task, add_reminder
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
+
+    local_tz = timezone(timedelta(hours=3))
+    local_now = datetime.now(local_tz)
 
     system_prompt = f"""Ты — умный менеджер задач. Общаешься с человеком на русском языке.
 
@@ -106,7 +109,7 @@ def chat_with_agent(user_text, tasks_json, stats):
 - update_task(id, status='done') — отметить выполненной
 - delete_task(id) — удалить
 - get_all_tasks() — получить список
-- add_reminder(text, remind_at) — создать напоминание (remind_at в формате YYYY-MM-DD HH:MM:SS)
+- add_reminder(text, remind_at) — создать напоминание (remind_at в формате YYYY-MM-DD HH:MM:SS в UTC+3)
 
 Если нужно создать задачу, верни JSON:
 {{"action": "create", "title": "название", "description": "описание", "priority": 3}}
@@ -122,7 +125,7 @@ def chat_with_agent(user_text, tasks_json, stats):
 
 Если просто общаешься — верни обычный текст без JSON.
 
-Текущее время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"""
+Текущее время (Москва, UTC+3): {local_now.strftime('%Y-%m-%d %H:%M:%S')}"""
 
     response = client.chat.completions.create(
         model="qwen/qwen3.8-27b",
