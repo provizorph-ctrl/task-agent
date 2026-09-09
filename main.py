@@ -3,6 +3,7 @@ import json
 import asyncio
 import threading
 import logging
+from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify
 from database import init_db, add_task, get_task, get_all_tasks, update_task, delete_task, get_stats
 from llm import plan_task, analyze_progress, summarize_day
@@ -61,6 +62,19 @@ def api_stats():
 CHAT_ID = int(os.environ.get("TELEGRAM_CHAT_ID", "0"))
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 
+telegram_app = None
+
+async def send_message(text):
+    if telegram_app:
+        await telegram_app.bot.send_message(chat_id=CHAT_ID, text=text)
+
+def send_message_sync(text):
+    if telegram_app:
+        asyncio.run_coroutine_threadsafe(
+            telegram_app.bot.send_message(chat_id=CHAT_ID, text=text),
+            telegram_app.bot_loop
+        )
+
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.id != CHAT_ID:
         await update.message.reply_text("Доступ запрещён.")
@@ -74,6 +88,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/progress <id> — анализ прогресса\n"
         "/stats — статистика\n"
         "/report — отчёт за день\n"
+        "/remind <часы> <текст> — напоминание\n"
+        "/daily — включить/выключить ежедневный отчёт\n"
         "/delete <id> — удалить задачу"
     )
 
@@ -172,6 +188,36 @@ async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"Ошибка: {e}")
 
+async def cmd_remind(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.id != CHAT_ID:
+        return
+    if len(context.args) < 2:
+        await update.message.reply_text("Формат: /remind 2 Купить молоко\n(через 2 часа)")
+        return
+    try:
+        hours = int(context.args[0])
+        text = " ".join(context.args[1:])
+        remind_time = datetime.now() + timedelta(hours=hours)
+
+        async def do_remind():
+            await asyncio.sleep(hours * 3600)
+            await send_message(f"Напоминание!\n\n{text}")
+
+        asyncio.create_task(do_remind())
+        await update.message.reply_text(f"Напоминание через {hours}ч:\n{text}")
+    except ValueError:
+        await update.message.reply_text("Неверное число часов.")
+
+daily_report_enabled = True
+
+async def cmd_daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.id != CHAT_ID:
+        return
+    global daily_report_enabled
+    daily_report_enabled = not daily_report_enabled
+    status = "включён" if daily_report_enabled else "выключен"
+    await update.message.reply_text(f"Ежедневный отчёт {status}.")
+
 async def cmd_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.id != CHAT_ID:
         return
@@ -194,6 +240,27 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         update_task(task_id, status="in_progress")
         await query.edit_message_text(f"Задача #{task_id} начата!")
 
+def daily_report_job():
+    if not daily_report_enabled:
+        return
+    tasks = get_all_tasks()
+    if not tasks:
+        return
+    try:
+        summary = summarize_day(tasks)
+        send_message_sync(f"Ежедневный отчёт:\n\n{summary}")
+    except Exception as e:
+        logger.error(f"Daily report error: {e}")
+
+def check_pending_tasks():
+    tasks = get_all_tasks(status="in_progress")
+    if not tasks:
+        return
+    msg = "Напоминание: у тебя есть задачи в процессе:\n\n"
+    for t in tasks:
+        msg += f"🔄 #{t['id']} — {t['title']}\n"
+    send_message_sync(msg)
+
 def start_flask():
     port = int(os.environ.get("PORT", 5000))
     logger.info(f"Flask starting on port {port}")
@@ -207,14 +274,18 @@ if __name__ == "__main__":
     logger.info("Flask thread started!")
 
     logger.info("Starting Telegram bot (main thread)...")
-    app = Application.builder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(CommandHandler("plan", cmd_plan))
-    app.add_handler(CommandHandler("list", cmd_list))
-    app.add_handler(CommandHandler("done", cmd_done))
-    app.add_handler(CommandHandler("progress", cmd_progress))
-    app.add_handler(CommandHandler("stats", cmd_stats))
-    app.add_handler(CommandHandler("report", cmd_report))
-    app.add_handler(CommandHandler("delete", cmd_delete))
-    app.add_handler(CallbackQueryHandler(callback_handler))
-    app.run_polling(drop_pending_updates=True)
+    telegram_app = Application.builder().token(TOKEN).build()
+
+    telegram_app.add_handler(CommandHandler("start", cmd_start))
+    telegram_app.add_handler(CommandHandler("plan", cmd_plan))
+    telegram_app.add_handler(CommandHandler("list", cmd_list))
+    telegram_app.add_handler(CommandHandler("done", cmd_done))
+    telegram_app.add_handler(CommandHandler("progress", cmd_progress))
+    telegram_app.add_handler(CommandHandler("stats", cmd_stats))
+    telegram_app.add_handler(CommandHandler("report", cmd_report))
+    telegram_app.add_handler(CommandHandler("remind", cmd_remind))
+    telegram_app.add_handler(CommandHandler("daily", cmd_daily))
+    telegram_app.add_handler(CommandHandler("delete", cmd_delete))
+    telegram_app.add_handler(CallbackQueryHandler(callback_handler))
+
+    telegram_app.run_polling(drop_pending_updates=True)
