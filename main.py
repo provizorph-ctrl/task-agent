@@ -5,7 +5,7 @@ import threading
 import logging
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify
-from database import init_db, add_task, get_task, get_all_tasks, update_task, delete_task, get_stats
+from database import init_db, add_task, get_task, get_all_tasks, update_task, delete_task, get_stats, get_pending_reminders, mark_reminder_sent
 from llm import plan_task, analyze_progress, summarize_day, chat_with_agent
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
@@ -115,6 +115,18 @@ def check_pending_tasks():
         msg += f"🔄 #{t['id']} — {t['title']}\n"
     send_message_sync(msg)
 
+def check_reminders():
+    while True:
+        try:
+            reminders = get_pending_reminders()
+            for r in reminders:
+                send_message_sync(f"Напоминание: {r['text']}")
+                mark_reminder_sent(r['id'])
+        except Exception as e:
+            logger.error(f"Reminder check error: {e}")
+        import time
+        time.sleep(60)
+
 def start_flask():
     port = int(os.environ.get("PORT", 5000))
     logger.info(f"Flask starting on port {port}")
@@ -126,6 +138,10 @@ if __name__ == "__main__":
     flask_thread = threading.Thread(target=start_flask, daemon=True)
     flask_thread.start()
     logger.info("Flask thread started!")
+
+    reminder_thread = threading.Thread(target=check_reminders, daemon=True)
+    reminder_thread.start()
+    logger.info("Reminder checker started!")
 
     logger.info("Starting Telegram bot (main thread)...")
     telegram_app = Application.builder().token(TOKEN).build()
