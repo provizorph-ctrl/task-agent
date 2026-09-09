@@ -21,6 +21,15 @@ def init_db():
                 tags TEXT DEFAULT ''
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS reminders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                text TEXT NOT NULL,
+                remind_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                sent INTEGER DEFAULT 0
+            )
+        """)
         conn.commit()
 
 @contextmanager
@@ -80,3 +89,25 @@ def get_stats():
         in_progress = conn.execute("SELECT COUNT(*) FROM tasks WHERE status = 'in_progress'").fetchone()[0]
         pending = conn.execute("SELECT COUNT(*) FROM tasks WHERE status = 'pending'").fetchone()[0]
         return {"total": total, "done": done, "in_progress": in_progress, "pending": pending}
+
+def add_reminder(text, remind_at):
+    with get_conn() as conn:
+        cursor = conn.execute(
+            "INSERT INTO reminders (text, remind_at) VALUES (?, ?)",
+            (text, remind_at)
+        )
+        conn.commit()
+        return cursor.lastrowid
+
+def get_pending_reminders():
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM reminders WHERE sent = 0 AND remind_at <= ?",
+            (datetime.now().isoformat(),)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+def mark_reminder_sent(reminder_id):
+    with get_conn() as conn:
+        conn.execute("UPDATE reminders SET sent = 1 WHERE id = ?", (reminder_id,))
+        conn.commit()
