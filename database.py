@@ -114,3 +114,8 @@ def mark_reminder_sent(reminder_id):
     with get_conn() as conn:
         conn.execute("UPDATE reminders SET sent = 1 WHERE id = ?", (reminder_id,))
         conn.commit()
+
+def get_all_reminders():
+    with get_conn() as conn:
+        rows = conn.execute("SELECT * FROM reminders ORDER BY remind_at").fetchall()
+        return [dict(r) for r in rows]
