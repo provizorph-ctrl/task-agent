@@ -81,7 +81,8 @@ def summarize_day(tasks):
     return response.choices[0].message.content
 
 def chat_with_agent(user_text, tasks_json, stats):
-    from database import add_task, get_all_tasks, update_task, delete_task
+    from database import add_task, get_all_tasks, update_task, delete_task, add_reminder
+    from datetime import datetime, timedelta
 
     system_prompt = f"""Ты — умный менеджер задач. Общаешься с человеком на русском языке.
 
@@ -96,14 +97,16 @@ def chat_with_agent(user_text, tasks_json, stats):
 2. Если хочет отметить задачу выполненной — отметь через update_task(id, status='done')
 3. Если хочет удалить задачу — удали через delete_task(id)
 4. Если спрашивает про задачи — покажи список
-5. Если просто общается — поддерживай разговор, будь дружелюбным
-6. Будь кратким, отвечай 1-3 предложения
+5. Если просит напоминание — СОЗДАЙ его через add_reminder() и подтверди
+6. Если просто общается — поддерживай разговор, будь дружелюбным
+7. Будь кратким, отвечай 1-3 предложения
 
 Доступные функции:
 - add_task(title, description, priority) — создать задачу
 - update_task(id, status='done') — отметить выполненной
 - delete_task(id) — удалить
 - get_all_tasks() — получить список
+- add_reminder(text, remind_at) — создать напоминание (remind_at в формате YYYY-MM-DD HH:MM:SS)
 
 Если нужно создать задачу, верни JSON:
 {{"action": "create", "title": "название", "description": "описание", "priority": 3}}
@@ -114,7 +117,12 @@ def chat_with_agent(user_text, tasks_json, stats):
 Если удалить:
 {{"action": "delete", "id": 1}}
 
-Если просто общаешься — верни обычный текст без JSON."""
+Если создать напоминание:
+{{"action": "remind", "text": "текст напоминания", "time": "YYYY-MM-DD HH:MM:SS"}}
+
+Если просто общаешься — верни обычный текст без JSON.
+
+Текущее время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"""
 
     response = client.chat.completions.create(
         model="qwen/qwen3.8-27b",
@@ -144,6 +152,11 @@ def chat_with_agent(user_text, tasks_json, stats):
             elif action.get("action") == "delete":
                 delete_task(action["id"])
                 return f"Задача #{action['id']} удалена."
+            elif action.get("action") == "remind":
+                remind_time = action.get("time", "")
+                text = action.get("text", "")
+                add_reminder(text, remind_time)
+                return f"Напоминание установлено на {remind_time}: {text}"
     except (json.JSONDecodeError, KeyError):
         pass
 
