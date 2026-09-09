@@ -84,7 +84,7 @@ def chat_with_agent(user_text, tasks_json, stats):
     from database import add_task, get_all_tasks, update_task, delete_task, add_reminder
     from datetime import datetime, timedelta, timezone
 
-    local_tz = timezone(timedelta(hours=6))
+    local_tz = timezone(timedelta(hours=5))
     local_now = datetime.now(local_tz)
 
     system_prompt = f"""Ты — умный менеджер задач. Общаешься с человеком на русском языке.
