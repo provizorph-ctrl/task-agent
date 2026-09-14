@@ -19,7 +19,7 @@ def plan_task(task_title, task_description=""):
 Создай от 3 до 7 подзадач. Отвечай ТОЛЬКО JSON, без текста."""
 
     response = client.chat.completions.create(
-        model="qwen/qwen3.8-27b",
+        model="openai/gpt-oss-120b",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3,
         max_tokens=1000
@@ -51,7 +51,7 @@ def analyze_progress(task_title, subtasks, completed):
 Отвечай кратко на русском."""
 
     response = client.chat.completions.create(
-        model="qwen/qwen3.8-27b",
+        model="openai/gpt-oss-120b",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.5,
         max_tokens=500
@@ -73,7 +73,7 @@ def summarize_day(tasks):
 Отвечай кратко и структурированно."""
 
     response = client.chat.completions.create(
-        model="qwen/qwen3.8-27b",
+        model="openai/gpt-oss-120b",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.5,
         max_tokens=500
@@ -197,7 +197,7 @@ def chat_with_agent(user_text, tasks_json, stats, get_logs=None, get_status=None
 Просто общение — верни обычный текст без JSON."""
 
     response = client.chat.completions.create(
-        model="qwen/qwen3.8-27b",
+        model="openai/gpt-oss-120b",
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_text}
