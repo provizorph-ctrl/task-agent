@@ -135,8 +135,36 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     stats = get_stats()
     tasks_json = json.dumps(tasks, ensure_ascii=False, default=str)
 
+    def get_logs():
+        try:
+            with open("bot.log", "r") as f:
+                return f.readlines()[-20:]
+        except:
+            return ["Логи ещё не записаны"]
+
+    def get_status():
+        return {"server_time": datetime.now().isoformat(), "tasks": get_stats(), "pending_reminders": len(get_pending_reminders())}
+
+    def get_code():
+        try:
+            with open("main.py", "r") as f:
+                return f.read()
+        except:
+            return "Could not read code"
+
+    def get_diagnostics():
+        import os
+        return {"python": os.sys.version, "platform": os.sys.platform, "files": os.listdir("."), "cwd": os.getcwd()}
+
+    def server_get(path):
+        try:
+            r = requests.get(f"http://127.0.0.1:5000{path}", timeout=5)
+            return r.json()
+        except:
+            return {"error": "Could not reach server"}
+
     try:
-        response = chat_with_agent(user_text, tasks_json, stats)
+        response = chat_with_agent(user_text, tasks_json, stats, get_logs, get_status, get_code, get_diagnostics)
         await update.message.reply_text(response)
     except Exception as e:
         logger.error(f"Chat error: {e}")
