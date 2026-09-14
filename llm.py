@@ -80,7 +80,7 @@ def summarize_day(tasks):
     )
     return response.choices[0].message.content
 
-def chat_with_agent(user_text, tasks_json, stats):
+def chat_with_agent(user_text, tasks_json, stats, get_logs=None, get_status=None, get_code=None, get_diagnostics=None):
     from database import add_task, get_all_tasks, update_task, delete_task, add_reminder, get_all_reminders
     from datetime import datetime, timedelta, timezone
     import os
@@ -91,14 +91,29 @@ def chat_with_agent(user_text, tasks_json, stats):
     reminders = get_all_reminders()
     reminders_json = json.dumps(reminders, ensure_ascii=False, default=str)
 
-    system_prompt = f"""Ты — умный менеджер задач. Общаешься с человеком на русском языке. У тебя есть доступ к серверу через HTTP эндпоинты.
+    logs_str = ""
+    if get_logs:
+        try:
+            logs_str = "\n".join(get_logs())
+        except:
+            logs_str = "Could not get logs"
 
-Доступные эндпоинты:
-- GET /api/logs — показать последние логи
-- GET /api/status — статус сервера, задач, напоминаний
-- GET /api/code — показать свой исходный код main.py
-- GET /api/diagnostics — диагностика сервера (Python, платформа, файлы, переменные окружения)
-- GET /health — здоровье сервера
+    status_str = ""
+    if get_status:
+        try:
+            status_str = str(get_status())
+        except:
+            status_str = "Could not get status"
+
+    system_prompt = f"""Ты — умный менеджер задач. Общаешься с человеком на русском языке. У тебя есть доступ к своему серверу через встроенные функции.
+
+Встроенные функции (вызывай их напрямую):
+- get_logs() — получить последние логи
+- get_status() — статус сервера, задач, напоминаний
+- get_code() — показать исходный код main.py
+- get_diagnostics() — диагностика сервера
+
+Пример использования: просто напиши get_logs() и ответь результатом пользователю.
 
 Текущие задачи:
 {tasks_json}
@@ -109,6 +124,12 @@ def chat_with_agent(user_text, tasks_json, stats):
 Статистика:
 {json.dumps(stats, ensure_ascii=False)}
 
+Логи сервера:
+{logs_str}
+
+Статус сервера:
+{status_str}
+
 Правила:
 1. Если человек хочет создать задачу — СОЗДАЙ её через add_task() и подтверди
 2. Если хочет отметить задачу выполненной — отметь через update_task(id, status='done')
@@ -116,9 +137,10 @@ def chat_with_agent(user_text, tasks_json, stats):
 4. Если спрашивает про задачи — покажи список задач
 5. Если спрашивает про напоминания — покажи список напоминаний
 6. Если просит напоминание — СОЗДАЙ его через add_reminder() и подтверди
-7. Если спрашивает про логи или диагностику — прочитай данные через эндпоинты и покажи
+7. Если спрашивает про логи или диагностику — вызови get_logs() или get_diagnostics()
 8. Если просто общается — поддерживай разговор, будь дружелюбным
 9. Будь кратким, отвечай 1-3 предложения
+10. НИКОГДА не говори пользователю "сделай сам" или "curl" — всё делай сам
 
 Доступные функции:
 - add_task(title, description, priority) — создать задачу
