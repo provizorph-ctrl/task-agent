@@ -83,7 +83,6 @@ def summarize_day(tasks):
 def chat_with_agent(user_text, tasks_json, stats, get_logs=None, get_status=None, get_code=None, get_diagnostics=None):
     from database import add_task, get_all_tasks, update_task, delete_task, add_reminder, get_all_reminders
     from datetime import datetime, timedelta, timezone
-    import os
 
     local_tz = timezone(timedelta(hours=5))
     local_now = datetime.now(local_tz)
@@ -91,29 +90,23 @@ def chat_with_agent(user_text, tasks_json, stats, get_logs=None, get_status=None
     reminders = get_all_reminders()
     reminders_json = json.dumps(reminders, ensure_ascii=False, default=str)
 
-    logs_str = ""
+    logs_data = []
     if get_logs:
         try:
-            logs_str = "\n".join(get_logs())
+            logs_data = get_logs()
         except:
-            logs_str = "Could not get logs"
+            logs_data = ["Логи недоступны"]
+    logs_str = "\n".join(logs_data) if logs_data else "Логи пусты"
 
-    status_str = ""
+    status_data = {}
     if get_status:
         try:
-            status_str = str(get_status())
+            status_data = get_status()
         except:
-            status_str = "Could not get status"
+            status_data = {"error": "status unavailable"}
+    status_str = str(status_data)
 
-    system_prompt = f"""Ты — умный менеджер задач. Общаешься с человеком на русском языке. У тебя есть доступ к своему серверу через встроенные функции.
-
-Встроенные функции (вызывай их напрямую):
-- get_logs() — получить последние логи
-- get_status() — статус сервера, задач, напоминаний
-- get_code() — показать исходный код main.py
-- get_diagnostics() — диагностика сервера
-
-Пример использования: просто напиши get_logs() и ответь результатом пользователю.
+    system_prompt = f"""Ты — умный менеджер задач. Общаешься с человеком на русском языке.
 
 Текущие задачи:
 {tasks_json}
@@ -130,6 +123,8 @@ def chat_with_agent(user_text, tasks_json, stats, get_logs=None, get_status=None
 Статус сервера:
 {status_str}
 
+Текущее время (UTC+5): {local_now.strftime('%Y-%m-%d %H:%M:%S')}
+
 Правила:
 1. Если человек хочет создать задачу — СОЗДАЙ её через add_task() и подтверди
 2. Если хочет отметить задачу выполненной — отметь через update_task(id, status='done')
@@ -137,10 +132,11 @@ def chat_with_agent(user_text, tasks_json, stats, get_logs=None, get_status=None
 4. Если спрашивает про задачи — покажи список задач
 5. Если спрашивает про напоминания — покажи список напоминаний
 6. Если просит напоминание — СОЗДАЙ его через add_reminder() и подтверди
-7. Если спрашивает про логи или диагностику — вызови get_logs() или get_diagnostics()
-8. Если просто общается — поддерживай разговор, будь дружелюбным
-9. Будь кратким, отвечай 1-3 предложения
-10. НИКОГДА не говори пользователю "сделай сам" или "curl" — всё делай сам
+7. Если спрашивает про логи — ответь на основе логи выше
+8. Если спрашивает про статус — ответь на основе статуса выше
+9. Если просто общается — поддерживай разговор, будь дружелюбным
+10. Будь кратким, отвечай 1-3 предложения
+11. НИКОГДА не говори пользователю "сделай сам" — всё делай сам
 
 Доступные функции:
 - add_task(title, description, priority) — создать задачу
@@ -162,9 +158,45 @@ def chat_with_agent(user_text, tasks_json, stats, get_logs=None, get_status=None
 Если создать напоминание:
 {{"action": "remind", "text": "текст напоминания", "time": "YYYY-MM-DD HH:MM:SS"}}
 
-Если просто общаешься — верни обычный текст без JSON.
+Если просто общаешься — верни обычный текст без JSON."""
 
-Текущее время (UTC+5): {local_now.strftime('%Y-%m-%d %H:%M:%S')}"""
+    response = client.chat.completions.create(
+        model="qwen/qwen3.8-27b",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_text}
+        ],
+        temperature=0.5,
+        max_tokens=500
+    )
+
+    content = response.choices[0].message.content.strip()
+
+    try:
+        if content.startswith("{"):
+            action = json.loads(content)
+            if action.get("action") == "create":
+                task_id = add_task(
+                    action.get("title", ""),
+                    action.get("description", ""),
+                    action.get("priority", 3)
+                )
+                return f"Задача #{task_id} создана: {action.get('title', '')}"
+            elif action.get("action") == "done":
+                update_task(action["id"], status="done")
+                return f"Задача #{action['id']} выполнена!"
+            elif action.get("action") == "delete":
+                delete_task(action["id"])
+                return f"Задача #{action['id']} удалена."
+            elif action.get("action") == "remind":
+                remind_time = action.get("time", "")
+                text = action.get("text", "")
+                add_reminder(text, remind_time)
+                return f"Напоминание установлено на {remind_time}: {text}"
+    except (json.JSONDecodeError, KeyError):
+        pass
+
+    return content
 
     response = client.chat.completions.create(
         model="qwen/qwen3.8-27b",
