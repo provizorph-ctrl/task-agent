@@ -83,6 +83,7 @@ def summarize_day(tasks):
 def chat_with_agent(user_text, tasks_json, stats):
     from database import add_task, get_all_tasks, update_task, delete_task, add_reminder, get_all_reminders
     from datetime import datetime, timedelta, timezone
+    import os
 
     local_tz = timezone(timedelta(hours=5))
     local_now = datetime.now(local_tz)
@@ -90,7 +91,14 @@ def chat_with_agent(user_text, tasks_json, stats):
     reminders = get_all_reminders()
     reminders_json = json.dumps(reminders, ensure_ascii=False, default=str)
 
-    system_prompt = f"""Ты — умный менеджер задач. Общаешься с человеком на русском языке.
+    system_prompt = f"""Ты — умный менеджер задач. Общаешься с человеком на русском языке. У тебя есть доступ к серверу через HTTP эндпоинты.
+
+Доступные эндпоинты:
+- GET /api/logs — показать последние логи
+- GET /api/status — статус сервера, задач, напоминаний
+- GET /api/code — показать свой исходный код main.py
+- GET /api/diagnostics — диагностика сервера (Python, платформа, файлы, переменные окружения)
+- GET /health — здоровье сервера
 
 Текущие задачи:
 {tasks_json}
@@ -108,8 +116,9 @@ def chat_with_agent(user_text, tasks_json, stats):
 4. Если спрашивает про задачи — покажи список задач
 5. Если спрашивает про напоминания — покажи список напоминаний
 6. Если просит напоминание — СОЗДАЙ его через add_reminder() и подтверди
-7. Если просто общается — поддерживай разговор, будь дружелюбным
-8. Будь кратким, отвечай 1-3 предложения
+7. Если спрашивает про логи или диагностику — прочитай данные через эндпоинты и покажи
+8. Если просто общается — поддерживай разговор, будь дружелюбным
+9. Будь кратким, отвечай 1-3 предложения
 
 Доступные функции:
 - add_task(title, description, priority) — создать задачу
