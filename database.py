@@ -30,6 +30,13 @@ def init_db():
                 sent INTEGER DEFAULT 0
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS products (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                qty REAL DEFAULT 0
+            )
+        """)
         conn.commit()
 
 @contextmanager
@@ -118,4 +125,41 @@ def mark_reminder_sent(reminder_id):
 def get_all_reminders():
     with get_conn() as conn:
         rows = conn.execute("SELECT * FROM reminders ORDER BY remind_at").fetchall()
+        return [dict(r) for r in rows]
+
+def add_product(name, qty):
+    with get_conn() as conn:
+        existing = conn.execute("SELECT id, qty FROM products WHERE name = ?", (name,)).fetchone()
+        if existing:
+            new_qty = existing["qty"] + qty
+            conn.execute("UPDATE products SET qty = ? WHERE id = ?", (new_qty, existing["id"]))
+        else:
+            conn.execute("INSERT INTO products (name, qty) VALUES (?, ?)", (name, qty))
+        conn.commit()
+
+def get_product(name):
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM products WHERE name = ?", (name,)).fetchone()
+        return dict(row) if row else None
+
+def update_product_qty(name, delta):
+    with get_conn() as conn:
+        row = conn.execute("SELECT id, qty FROM products WHERE name = ?", (name,)).fetchone()
+        if row:
+            new_qty = row["qty"] + delta
+            if new_qty < 0:
+                new_qty = 0
+            conn.execute("UPDATE products SET qty = ? WHERE id = ?", (new_qty, row["id"]))
+            conn.commit()
+            return new_qty
+        return None
+
+def list_products():
+    with get_conn() as conn:
+        rows = conn.execute("SELECT * FROM products ORDER BY name").fetchall()
+        return [dict(r) for r in rows]
+
+def get_all_products():
+    with get_conn() as conn:
+        rows = conn.execute("SELECT * FROM products ORDER BY name").fetchall()
         return [dict(r) for r in rows]
