@@ -58,7 +58,46 @@ def analyze_progress(task_title, subtasks, completed):
     )
     return response.choices[0].message.content
 
-def summarize_day(tasks):
+def generate_recipe(available_products, user_query):
+    products_text = "\n".join([f"- {p['name']}: {p['qty']}" for p in available_products]) if available_products else "Нет продуктов в базе"
+    
+    prompt = f"""Ты — опытный шеф-повар. Составь рецепт блюда на основе имеющихся продуктов.
+
+Имеющиеся продукты:
+{products_text}
+
+Запрос пользователя: {user_query}
+
+Верни JSON в формате:
+{{
+  "name": "Название блюда",
+  "ingredients": [
+    {{"name": "продукт", "qty": количество, "unit": "единица"}}
+  ],
+  "steps": ["Шаг 1", "Шаг 2"],
+  "servings": 2,
+  "time": "30 минут"
+}}
+
+Используй ТОЛЬКО продукты из списка выше. Укажи точное количество для списания.
+Отвечай ТОЛЬКО JSON, без текста."""
+
+    response = client.chat.completions.create(
+        model="openai/gpt-oss-120b",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.5,
+        max_tokens=1500
+    )
+
+    content = response.choices[0].message.content.strip()
+    if content.startswith("```"):
+        content = content.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+    
+    try:
+        recipe = json.loads(content)
+        return recipe
+    except json.JSONDecodeError:
+        return {"name": "Рецепт", "ingredients": [], "steps": [content], "servings": 1, "time": "неизвестно"}
     prompt = f"""Составь краткий отчёт за день по задачам.
 
 Задачи:
