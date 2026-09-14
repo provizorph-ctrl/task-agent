@@ -203,7 +203,7 @@ def chat_with_agent(user_text, tasks_json, stats, get_logs=None, get_status=None
             {"role": "user", "content": user_text}
         ],
         temperature=0.5,
-        max_tokens=500
+        max_tokens=1500
     )
 
     content = response.choices[0].message.content.strip()
