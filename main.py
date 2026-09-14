@@ -7,12 +7,19 @@ import time
 import requests
 from datetime import datetime, timedelta, timezone
 from flask import Flask, render_template, request, jsonify
-from database import init_db, add_task, get_task, get_all_tasks, update_task, delete_task, get_stats, get_pending_reminders, mark_reminder_sent
+from database import init_db, add_task, get_task, get_all_tasks, update_task, delete_task, get_stats, get_pending_reminders, mark_reminder_sent, add_reminder, get_all_reminders
 from llm import plan_task, analyze_progress, summarize_day, chat_with_agent
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)s %(message)s',
+    handlers=[
+        logging.FileHandler("bot.log"),
+        logging.StreamHandler()
+    ]
+)
 logger = logging.getLogger(__name__)
 
 flask_app = Flask(__name__)
@@ -167,7 +174,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         response = chat_with_agent(user_text, tasks_json, stats, get_logs, get_status, get_code, get_diagnostics)
         await update.message.reply_text(response)
     except Exception as e:
-        logger.error(f"Chat error: {e}")
+        logger.error(f"Chat error: {type(e).__name__}: {e}", exc_info=True)
         await update.message.reply_text("Произошла ошибка, попробуй ещё раз.")
 
 def check_reminders():
