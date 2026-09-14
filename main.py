@@ -7,10 +7,10 @@ import time
 import requests
 from datetime import datetime, timedelta, timezone
 from flask import Flask, render_template, request, jsonify
-from database import init_db, add_task, get_task, get_all_tasks, update_task, delete_task, get_stats, get_pending_reminders, mark_reminder_sent, add_reminder, get_all_reminders
-from llm import plan_task, analyze_progress, summarize_day, chat_with_agent
+from database import init_db, add_task, get_task, get_all_tasks, update_task, delete_task, get_stats, get_pending_reminders, mark_reminder_sent, add_reminder, get_all_reminders, add_product, get_product, update_product_qty, list_products, get_all_products
+from llm import plan_task, analyze_progress, summarize_day, chat_with_agent, generate_recipe
 from telegram import Update
-from telegram.ext import Application, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, MessageHandler, CommandHandler, filters, ContextTypes
 
 logging.basicConfig(
     level=logging.INFO,
@@ -118,6 +118,92 @@ BOT_API = f"https://api.telegram.org/bot{TOKEN}"
 
 telegram_app = None
 
+def parse_product_list(text):
+    products = []
+    for line in text.strip().split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        if " - " in line:
+            parts = line.split(" - ", 1)
+            name = parts[0].strip()
+            try:
+                qty = float(parts[1].strip().split()[0])
+            except:
+                qty = 1
+        elif "-" in line:
+            parts = line.split("-", 1)
+            name = parts[0].strip()
+            try:
+                qty = float(parts[1].strip().split()[0])
+            except:
+                qty = 1
+        else:
+            name = line.strip()
+            qty = 1
+        if name:
+            products.append({"name": name.lower(), "qty": qty})
+    return products
+
+async def cmd_products(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.id != CHAT_ID:
+        return
+    
+    text = update.message.text.replace("/продукты", "").strip()
+    
+    if not text:
+        products = list_products()
+        if not products:
+            await update.message.reply_text("Список продуктов пуст. Добавьте продукты командой:\n/продукты\nкартофель - 3\nморковь - 2")
+            return
+        msg = "Ваши продукты:\n" + "\n".join([f"• {p['name']} — {p['qty']}" for p in products])
+        await update.message.reply_text(msg)
+        return
+    
+    products = parse_product_list(text)
+    if not products:
+        await update.message.reply_text("Не удалось распознать продукты. Формат:\nназвание - количество")
+        return
+    
+    for p in products:
+        add_product(p["name"], p["qty"])
+    
+    added = ", ".join([f"{p['name']} ({p['qty']})" for p in products])
+    await update.message.reply_text(f"Добавлено: {added}")
+
+async def cmd_recipe(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.id != CHAT_ID:
+        return
+    
+    user_query = update.message.text.replace("/рецепт", "").strip()
+    if not user_query:
+        await update.message.reply_text("Укажите что приготовить. Например:\n/рецепт курица с картошкой")
+        return
+    
+    products = get_all_products()
+    if not products:
+        await update.message.reply_text("Сначала добавьте продукты командой /продукты")
+        return
+    
+    recipe = generate_recipe(products, user_query)
+    
+    msg = f"🍽 {recipe['name']}\n\n"
+    msg += "Ингредиенты:\n"
+    for ing in recipe.get("ingredients", []):
+        msg += f"• {ing['name']} — {ing.get('qty', '?')} {ing.get('unit', '')}\n"
+    msg += "\nПриготовление:\n"
+    for i, step in enumerate(recipe.get("steps", []), 1):
+        msg += f"{i}. {step}\n"
+    msg += f"\n⏱ {recipe.get('time', '?')} | 👥 {recipe.get('servings', '?')} порций"
+    
+    for ing in recipe.get("ingredients", []):
+        name = ing.get("name", "").lower()
+        qty = ing.get("qty", 0)
+        if name and qty:
+            update_product_qty(name, -qty)
+    
+    await update.message.reply_text(msg)
+
 def send_telegram(text):
     try:
         resp = requests.post(
@@ -219,5 +305,7 @@ if __name__ == "__main__":
 
     logger.info("Starting Telegram bot (main thread)...")
     telegram_app = Application.builder().token(TOKEN).build()
+    telegram_app.add_handler(CommandHandler("продукты", cmd_products))
+    telegram_app.add_handler(CommandHandler("рецепт", cmd_recipe))
     telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     telegram_app.run_polling(drop_pending_updates=True)
