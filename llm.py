@@ -233,5 +233,3 @@ def chat_with_agent(user_text, tasks_json, stats, get_logs=None, get_status=None
         pass
 
     return content
-
-    return content
