@@ -35,6 +35,46 @@ def index():
 def health():
     return {"status": "ok", "time": datetime.now().isoformat()}
 
+@flask_app.route("/api/logs")
+def api_logs():
+    try:
+        with open("bot.log", "r") as f:
+            lines = f.readlines()[-20:]
+        return {"logs": lines}
+    except:
+        return {"logs": ["Логи ещё не записаны"]}
+
+@flask_app.route("/api/status")
+def api_status():
+    import time as t
+    return {
+        "server_time": datetime.now().isoformat(),
+        "tasks_db": "tasks.db",
+        "tasks": get_stats(),
+        "pending_reminders": len(get_pending_reminders()),
+        "uptime": "running"
+    }
+
+@flask_app.route("/api/code")
+def api_code():
+    try:
+        with open("main.py", "r") as f:
+            code = f.read()
+        return {"file": "main.py", "code": code}
+    except:
+        return {"error": "Could not read code"}
+
+@flask_app.route("/api/diagnostics")
+def api_diagnostics():
+    import os
+    return {
+        "python_version": os.sys.version,
+        "platform": os.sys.platform,
+        "cwd": os.getcwd(),
+        "files": os.listdir("."),
+        "env_keys": list(os.environ.keys())
+    }
+
 @flask_app.route("/api/tasks", methods=["GET"])
 def api_tasks():
     status = request.args.get("status")
