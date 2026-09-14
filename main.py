@@ -31,6 +31,10 @@ def index():
     stats = get_stats()
     return render_template("index.html", tasks=tasks, stats=stats)
 
+@flask_app.route("/health")
+def health():
+    return {"status": "ok", "time": datetime.now().isoformat()}
+
 @flask_app.route("/api/tasks", methods=["GET"])
 def api_tasks():
     status = request.args.get("status")
@@ -110,6 +114,14 @@ def check_reminders():
             logger.error(f"Reminder check error: {e}")
         time.sleep(30)
 
+def keep_alive():
+    while True:
+        try:
+            requests.get("http://127.0.0.1:5000/health", timeout=5)
+        except Exception as e:
+            logger.error(f"Keep-alive error: {e}")
+        time.sleep(120)
+
 def start_flask():
     port = int(os.environ.get("PORT", 5000))
     logger.info(f"Flask starting on port {port}")
@@ -125,6 +137,10 @@ if __name__ == "__main__":
     reminder_thread = threading.Thread(target=check_reminders, daemon=True)
     reminder_thread.start()
     logger.info("Reminder checker started!")
+
+    keep_alive_thread = threading.Thread(target=keep_alive, daemon=True)
+    keep_alive_thread.start()
+    logger.info("Keep-alive started!")
 
     logger.info("Starting Telegram bot (main thread)...")
     telegram_app = Application.builder().token(TOKEN).build()
